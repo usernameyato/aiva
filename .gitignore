@@ -1,0 +1,7 @@
+credits.py
+__pycache__/
+*.pyc
+
+# большие модели Silero, храним только локально
+silero_models/
+static/faster-whisper-small/

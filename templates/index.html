@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Эйва - ИИ Ассистент</title>
+    <style>
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: #000;
+    }
+
+    .model-container {
+      position: relative;
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+
+    /* Полосы бокового размытия */
+    .model-container::before,
+    .model-container::after {
+      content: "";
+      position: absolute;
+      top: 5%;               /* тот же отступ, что и у .chat-container */
+      bottom: 5%;
+      width: 34rem;           /* ширина зоны размытия */
+      background: rgba(0,0,0,0.25);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px); /* для Safari */
+      pointer-events: none;  /* клики сквозь */
+      z-index: 9;            /* чуть ниже, чем у .chat-container (10) */
+    }
+
+    /* Левая полоса, совпадающая с левым краем чата */
+    .model-container::before {
+      left: 5%;
+      border-top-left-radius: 1rem;
+      border-bottom-left-radius: 1rem;
+    }
+
+    /* Правая полоса, совпадающая с правым краем чата */
+    .model-container::after {
+      right: 5%;
+      border-top-right-radius: 1rem;
+      border-bottom-right-radius: 1rem;
+    }
+
+    canvas#renderCanvas {
+      width: 100%; height: 100%;
+      display: block;
+    }
+
+    /* -------------- Чат как оверлей -------------- */
+    .chat-container {
+      position: absolute;
+      top: 5%;
+      left: 5%;
+      width: 90%;
+      height: 90%;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.25);
+      /* backdrop-filter: blur(6px); */
+      border-radius: 1rem;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      overflow: hidden; /* чтобы псевдоэлементы не выступали за рамки */
+    }
+
+    /* Псевдо-элементы слева и справа */
+    .chat-container::before,
+    .chat-container::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      width: 38rem;         /* ширина «размытой» полосы */
+      height: 100%;
+      /* backdrop-filter: blur(6px); */
+      pointer-events: none; /* чтобы клики проходили сквозь */
+    }
+
+    /* Левый бок */
+    .chat-container::before {
+      left: 0;
+      border-top-left-radius: 1rem;
+      border-bottom-left-radius: 1rem;
+    }
+
+    /* Правый бок */
+    .chat-container::after {
+      right: 0;
+      border-top-right-radius: 1rem;
+      border-bottom-right-radius: 1rem;
+    }
+
+    /* Заголовок */
+    .chat-container h1 {
+      margin: 0 0 0.5rem;
+      font-family: 'Poppins', sans-serif;
+      font-size: 1.5rem;
+      color: #00FFDE;
+    }
+
+    /* Окно сообщений */
+    .chat-window {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      overflow-y: auto;
+      padding-right: 0.2rem; /* для скроллбара */
+      scrollbar-width: thin;
+      scrollbar-color: rgba(196,0,255,0.6) rgba(255,255,255,0.05);
+    }
+    /* WebKit (Chrome, Safari) */
+    .chat-window::-webkit-scrollbar {
+      width: 6px;                     /* толщина полосы */
+    }
+
+    .chat-window::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.05);  /* фон дорожки */
+      border-radius: 3px;
+    }
+
+    .chat-window::-webkit-scrollbar-thumb {
+      background: rgba(196,0,255,0.6);      /* цвет «бегунка» */
+      border-radius: 3px;
+    }
+
+    .chat-window::-webkit-scrollbar-thumb:hover {
+      background: rgba(196,0,255,0.8);
+    }
+
+    /* Само сообщение */
+    .message {
+      max-width: 30%;
+      padding: 0.6rem 1rem;
+      border-radius: 1rem;
+      font-family: 'Poppins', sans-serif;
+      line-height: 1.3;
+      word-wrap: break-word;
+    }
+
+    /* Ассистент слева */
+    .message.assistant {
+      align-self: flex-start;
+      background: rgba(30, 30, 35, 0.8);
+      color: #00FFDE;
+      border-radius: 1rem 1rem 1rem 0.25rem;
+    }
+
+    /* Пользователь справа */
+    .message.user {
+      align-self: flex-end;
+      background: rgba(0, 0, 0, 0.6);
+      color: #FFF;
+      border-radius: 1rem 1rem 0.25rem 1rem;
+    }
+
+    /* Форма ввода */
+    #chat-form {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+    #message-input {
+      flex: 1;
+      padding: 0.5rem 0.8rem;
+      border: none;
+      border-radius: 0.75rem;
+      background: rgba(255,255,255,0.1);
+      color: #FFF;
+    }
+    #send-btn, #record-btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 0.75rem;
+      background: #C400FF;
+      color: #FFF;
+      cursor: pointer;
+    }
+
+    /* Остальные кнопки/ссылки */
+    #stop-btn {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 0.75rem;
+      background: #333;
+      color: #FFF;
+      cursor: pointer;
+    }
+    .reset-link {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: #888;
+      text-align: center;
+    }
+
+    </style>
+
+    <script defer src="{{ url_for('static', filename='js/voice_scripts.js') }}"></script>
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script defer src="{{ url_for('static', filename='js/model_scene_fixed.js') }}"></script>
+    <!-- <script defer src="{{ url_for('static', filename='js/model_scene.js') }}"></script> -->
+
+</head>
+<body>
+
+
+  <div class="model-container" id="model-container">
+  <canvas id="renderCanvas"></canvas>
+
+  <div class="chat-container">
+    <h1>Эйва (AIVA – AI Voice Assistant)</h1>
+    <div class="chat-window" id="chat-window">
+      {% for msg in conversation %}
+        <div class="message {{ msg.role }}">
+          <strong>{{ msg.role.capitalize() }}:</strong> {{ msg.content }}
+        </div>
+      {% endfor %}
+    </div>
+    <form id="chat-form">
+      <input type="text" id="message-input" placeholder="Введите сообщение…" required autofocus>
+      <button type="submit" id="send-btn">Отправить</button>
+      <button type="button" id="record-btn">🎤</button>
+    </form>
+    <button id="stop-btn">Остановить голос</button>
+    <a href="{{ url_for('reset') }}" class="reset-link">Сбросить диалог</a>
+  </div>
+</div>
+
+  <!-- <script>
+function scrollChatToBottom() {
+    const chatWindow = document.getElementById("chat-window");
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+function typeWriter(element, text, i, speed) {
+    if (i < text.length) {
+        element.textContent += text.charAt(i);
+        i++;
+        setTimeout(() => typeWriter(element, text, i, speed), speed);
+        scrollChatToBottom();
+    }
+}
+
+function displayMessage(role, content, typing = true) {
+    const chatWindow = document.getElementById("chat-window");
+    const messageDiv = document.createElement("div");
+    messageDiv.className = `message ${role}`;
+    messageDiv.innerHTML = `<strong>${role.charAt(0).toUpperCase() + role.slice(1)}:</strong> <span class="message-content"></span>`;
+    chatWindow.appendChild(messageDiv);
+    scrollChatToBottom();
+    const contentSpan = messageDiv.querySelector(".message-content");
+    if (typing && role === "assistant") {
+        typeWriter(contentSpan, content, 0, 15);
+    } else {
+        contentSpan.textContent = content;
+    }
+}
+
+function showThinkingMessage() {
+    const thoughts = [
+        "Ой, интересный вопрос…",
+        "Секундочку, подумаю…",
+        "Хм… дай мне секунду.",
+        "Загрузка мыслей…",
+        "Обрабатываю мысли…",
+        "Это заслуживает внимания…",
+        "Я уже почти придумала ответ…",
+        "Дай мне немного подумать…"
+    ];
+    const randomThought = thoughts[Math.floor(Math.random() * thoughts.length)];
+
+    const chatWindow = document.getElementById("chat-window");
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "message assistant loading";
+    messageDiv.innerHTML = `
+        <strong>Ассистент:</strong>
+        <span class="dots-thinking">${randomThought}
+            <span class="dot1">.</span>
+            <span class="dot2">.</span>
+            <span class="dot3">.</span>
+        </span>`;
+    messageDiv.id = "thinking-message";
+    chatWindow.appendChild(messageDiv);
+    scrollChatToBottom();
+}
+
+
+
+function replaceLastAssistantMessage(newText) {
+    const loading = document.getElementById("thinking-message");
+    if (loading) {
+        const span = loading.querySelector(".dots-thinking");
+        if (span) span.remove(); // убираем "думаю..."
+        const container = loading.querySelector("strong");
+        loading.innerHTML = `<strong>Ассистент:</strong> <span class="message-content"></span>`;
+        const contentSpan = loading.querySelector(".message-content");
+        typeWriter(contentSpan, newText, 0, 15);
+        loading.id = ""; // больше не "loading"
+        loading.classList.remove("loading");
+    }
+}
+
+
+function pollAudio(taskId) {
+    const interval = setInterval(async () => {
+        const res = await fetch(`/get_audio?task_id=${taskId}`);
+        if (res.status === 200) {
+            const audioBlob = await res.blob();
+            const url = URL.createObjectURL(audioBlob);
+            playAudio(url); // 🔥 теперь отслеживается currentAudio
+
+            // Удаляем задачу после воспроизведения
+            if (currentAudio) {
+                currentAudio.onended = () => {
+                    fetch(`/clear_audio?task_id=${taskId}`, { method: "POST" });
+                    currentAudio = null;
+                };
+            }
+
+            clearInterval(interval);
+        } else if (res.status === 500 || res.status === 404) {
+            clearInterval(interval);
+            console.warn("Аудио не удалось получить.");
+        }
+    }, 1000);
+}
+
+
+let currentAudio = null;
+let feedbackAudio = null;
+
+
+function playAudio(url) {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.play();
+
+    audio.onended = () => {
+        currentAudio = null;
+    };
+}
+
+function playFeedbackAudio(url, onEnd = null) {
+    if (feedbackAudio) {
+        feedbackAudio.pause();
+        feedbackAudio = null;
+    }
+
+    const audio = new Audio(url);
+    feedbackAudio = audio;
+    audio.play();
+
+    audio.onended = () => {
+        feedbackAudio = null;
+        if (typeof onEnd === "function") onEnd();
+    };
+}
+
+
+document.addEventListener("DOMContentLoaded", () => {
+    let recognitionRunning = false;
+    const chatForm = document.getElementById("chat-form");
+    const messageInput = document.getElementById("message-input");
+    const sendBtn = document.getElementById("send-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    stopBtn.addEventListener("click", () => {
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            currentAudio = null;
+        }
+        if (feedbackAudio) {
+            feedbackAudio.pause();
+            feedbackAudio.currentTime = 0;
+            feedbackAudio = null;
+        }
+    });
+
+
+
+    scrollChatToBottom();
+
+    chatForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const userMessage = messageInput.value.trim();
+        if (!userMessage) return;
+
+        displayMessage("user", userMessage, false);
+        messageInput.value = "";
+        sendBtn.disabled = true;
+        showThinkingMessage();
+
+        try {
+            const response = await fetch("/send_message", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userMessage })
+            });
+
+            const data = await response.json();
+            if (data.response) {
+                replaceLastAssistantMessage(data.response);
+                if (data.task_id) {
+                    pollAudio(data.task_id);
+                }
+            } else {
+                replaceLastAssistantMessage("Ошибка в ответе от Эйвы.");
+            }
+        } catch (error) {
+            console.error("Ошибка:", error);
+            replaceLastAssistantMessage("Произошла ошибка. Попробуй ещё раз.");
+        } finally {
+            sendBtn.disabled = false;
+            messageInput.focus();
+        }
+    });
+
+    // Голосовой ввод
+    const recordBtn = document.getElementById("record-btn");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = "ru-RU";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        let isWakeMode = true;
+
+        function startWakeMode() {
+            if (recognitionRunning) return;
+            isWakeMode = true;
+            recognition.continuous = true;
+            try {
+                recognition.start();
+                recognitionRunning = true;
+                console.log("👂 Жду 'привет эйва'...");
+            } catch (e) {
+                console.warn("⛔ Ошибка старта wakeMode:", e.message);
+            }
+        }
+
+
+        function startCommandMode() {
+            if (recognitionRunning) return; // защита
+            isWakeMode = false;
+            recognition.continuous = false;
+
+            recordBtn.disabled = true;
+            recordBtn.textContent = "🎙 Слушаю...";
+
+            playFeedbackAudio("/static/audio/listening.wav", () => {
+                try {
+                    recognition.start();
+                    recognitionRunning = true;
+                } catch (e) {
+                    console.warn("⛔ Ошибка старта командного режима:", e.message);
+                }
+            });
+
+            if (currentAudio) {
+                currentAudio.onended = () => {
+                    try {
+                        recognition.start();
+                        recognitionRunning = true;
+                    } catch (e) {
+                        console.warn("⛔ Ошибка старта после озвучки:", e.message);
+                    }
+                };
+            }
+        }
+
+
+
+        recognition.onresult = (event) => {
+            const result = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+            console.log("Распознано:", result);
+
+            // 📦 Фильтруем "я слушаю", чтобы не отправлялось
+            const bannedPhrases = [
+                "я слушаю", "говори я вся во внимании", "окей я тебя слушаю",
+                "что бы ты хотел узнать", "да я здесь", "готова помочь", "угу я тут говори"
+            ];
+
+            if (bannedPhrases.some(phrase => result.includes(phrase))) {
+                console.log("🛑 Системная фраза проигнорирована");
+                return;
+            }
+
+            if (isWakeMode) {
+                if (result.includes("привет эйва")) {
+                    console.log("✨ Активация голосом");
+                    recognition.stop();
+                    setTimeout(startCommandMode, 700); // задержка перед распознаванием
+                }
+            } else {
+                messageInput.value = result;
+                document.getElementById("send-btn").click();
+                recognition.stop(); // 🛑 добавляем остановку вручную
+            }
+        };
+
+
+        recognition.onstart = () => {
+            recognitionRunning = true;
+        };
+
+        recognition.onend = () => {
+            recognitionRunning = false;
+            if (isWakeMode) {
+                setTimeout(() => {
+                    try {
+                        recognition.start();
+                        recognitionRunning = true;
+                    } catch (e) {
+                        console.warn("⛔ Ошибка рестарта в wake:", e.message);
+                    }
+                }, 1000);
+            } else {
+                recordBtn.disabled = false;
+                recordBtn.textContent = "🎤";
+                startWakeMode();
+            }
+        };
+
+        recognition.onerror = (event) => {
+            recognitionRunning = false;
+
+            switch (event.error) {
+                case "no-speech":
+                    console.warn("⚠️ Нет речи — тишина, жду...");
+                    break;
+                case "network":
+                    console.warn("⚠️ Проблема с сетью");
+                    break;
+                case "not-allowed":
+                    console.warn("⛔ Доступ к микрофону запрещён");
+                    break;
+                default:
+                    console.warn("❗ Произошла ошибка распознавания:", event.error);
+            }
+
+            if (!isWakeMode) {
+                recordBtn.disabled = false;
+                recordBtn.textContent = "🎤";
+            }
+
+            if (isWakeMode) {
+                setTimeout(() => {
+                    try {
+                        recognition.start();
+                        recognitionRunning = true;
+                    } catch (e) {
+                        console.warn("⚠️ Не удалось перезапустить слушание:", e.message);
+                    }
+                }, 1000);
+            }
+        };
+
+
+
+
+        recordBtn.addEventListener("click", () => {
+            recognition.stop(); // на всякий случай
+            setTimeout(() => {
+                startCommandMode();
+            }, 1000); // ⏱ задержка 1000 мс
+        });
+
+
+        startWakeMode();
+    } else {
+        const recordBtn = document.getElementById("record-btn");
+        recordBtn.disabled = true;
+        recordBtn.textContent = "Голосовой ввод не поддерживается";
+    }
+
+});
+</script> -->
+
+
+</body>
+</html>

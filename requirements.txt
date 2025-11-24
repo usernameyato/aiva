@@ -1,0 +1,30 @@
+# Web-фреймворки
+flask
+fastapi
+uvicorn
+
+# Работа с запросами и API
+requests
+
+# Работа с WAV и звуком
+scipy
+numpy
+pydub
+sounddevice
+
+# Токенизация и текст
+nltk
+phonemizer
+
+# Модели и TTS
+torch
+
+# Валидация данных (FastAPI)
+pydantic
+
+#Для модели Silero:
+#sudo apt install espeak-ng  # если на Linux
+
+#А также при первом запуске:
+#import nltk
+#nltk.download('punkt')
