@@ -3,5 +3,4 @@ __pycache__/
 *.pyc
 
 # большие модели Silero, храним только локально
-silero_models/
-static/faster-whisper-small/
+silero_models/v2_baya.pt
